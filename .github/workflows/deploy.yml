@@ -1,7 +1,7 @@
 name: Deploy Discord Bot to VPS
 
 on:
-    push:
+    pull_request:
         branches:
             - main
 
