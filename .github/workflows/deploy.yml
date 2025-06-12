@@ -27,6 +27,7 @@ jobs:
                   host: ${{ secrets.VPS_HOST }}
                   username: ${{ secrets.VPS_USER }}
                   key: ${{ secrets.VPS_KEY }}
+                  passphrase: ${{ secrets.VPS_KEY_PASSPHRASE }}
                   source: "."
                   target: "/home/${{ secrets.VPS_USER }}/discord-bot"
 
