@@ -27,6 +27,7 @@ jobs:
                   host: ${{ secrets.VPS_HOST }}
                   username: ${{ secrets.VPS_USER }}
                   key: ${{ secrets.VPS_KEY }}
+                  passphrase: ${{ secrets.VPS_KEY_PASSPHRASE }}
                   source: "."
                   target: "/home/${{ secrets.VPS_USER }}/discord-bot"
 
@@ -41,6 +42,7 @@ jobs:
                   host: ${{ secrets.VPS_HOST }}
                   username: ${{ secrets.VPS_USER }}
                   key: ${{ secrets.VPS_KEY }}
+                  passphrase: ${{ secrets.VPS_KEY_PASSPHRASE }}
                   source: ".env"
                   target: "/home/${{ secrets.VPS_USER }}/discord-bot"
 
@@ -50,11 +52,12 @@ jobs:
                   host: ${{ secrets.VPS_HOST }}
                   username: ${{ secrets.VPS_USER }}
                   key: ${{ secrets.VPS_KEY }}
+                  passphrase: ${{ secrets.VPS_KEY_PASSPHRASE }}
                   script: |
                       cd ~/discord-bot
                       export NVM_DIR="$HOME/.nvm"
                       source "$NVM_DIR/nvm.sh"
                       npm install
-                      npm run register-commands
+                      npm run register
                       pm2 restart bot || pm2 start npm --name bot -- run start
                       pm2 save

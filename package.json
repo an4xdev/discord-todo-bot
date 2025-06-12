@@ -1,0 +1,22 @@
+{
+  "name": "discord-todo-bot",
+  "version": "1.0.0",
+  "description": "Create simple todo list in channel, mark tasks as done, and clear tasks from channel.",
+  "license": "MIT",
+  "author": "Michał Żuk",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "register": "node register-commands.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.19.3",
+    "dotenv": "^16.5.0",
+    "sqlite3": "^5.1.7"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  }
+}
