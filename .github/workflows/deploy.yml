@@ -58,6 +58,6 @@ jobs:
                       export NVM_DIR="$HOME/.nvm"
                       source "$NVM_DIR/nvm.sh"
                       npm install
-                      npm run register-commands
+                      npm run register
                       pm2 restart bot || pm2 start npm --name bot -- run start
                       pm2 save
