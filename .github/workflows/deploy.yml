@@ -53,7 +53,7 @@ jobs:
             - name: Test build
               run: |
                   go mod tidy
-                  CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -o discord-bot main.go
+                  CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build
 
             - name: Upload build artifact (for deployment job)
               if: github.ref == 'refs/heads/main' && github.event_name == 'push'
