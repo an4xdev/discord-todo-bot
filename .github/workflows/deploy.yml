@@ -1,4 +1,4 @@
-name: Deploy Discord Bot to VPS
+name: CI/CD Pipeline
 
 on:
     push:
@@ -9,48 +9,105 @@ on:
             - main
 
 jobs:
-    deploy:
+    test:
         runs-on: ubuntu-latest
+        name: Test and Build
 
         steps:
             - name: Checkout repo
-              uses: actions/checkout@v3
+              uses: actions/checkout@v4
 
-            - name: Setup Node
-              uses: actions/setup-node@v3
+            - name: Setup Go
+              uses: actions/setup-go@v4
               with:
-                  node-version: "22"
+                  go-version: "1.21"
 
-            - name: Install dependencies
-              run: npm ci
+            - name: Cache Go modules
+              uses: actions/cache@v3
+              with:
+                  path: ~/go/pkg/mod
+                  key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+                  restore-keys: |
+                      ${{ runner.os }}-go-
 
-            - name: Deploy to VPS via SSH
-              uses: appleboy/scp-action@v0.1.3
+            - name: Download dependencies
+              run: go mod download
+
+            - name: Verify dependencies
+              run: go mod verify
+
+            - name: Run go vet
+              run: go vet ./...
+
+            - name: Run go fmt check
+              run: |
+                  if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
+                      echo "The following files need formatting:"
+                      gofmt -s -l .
+                      exit 1
+                  fi
+
+            - name: Run tests
+              run: go test -v ./...
+
+            - name: Test build
+              run: |
+                  go mod tidy
+                  CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build
+
+            - name: Upload build artifact (for deployment job)
+              if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+              uses: actions/upload-artifact@v3
+              with:
+                  name: discord-bot-binary
+                  path: discord-bot
+                  retention-days: 1
+
+    deploy:
+        runs-on: ubuntu-latest
+        name: Deploy to VPS
+        needs: test
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+        steps:
+            - name: Checkout repo (for .env creation)
+              uses: actions/checkout@v4
+
+            - name: Download build artifact
+              uses: actions/download-artifact@v3
+              with:
+                  name: discord-bot-binary
+
+            - name: Make binary executable
+              run: chmod +x discord-bot
+
+            - name: Deploy binary to VPS
+              uses: appleboy/scp-action@v0.1.7
               with:
                   host: ${{ secrets.VPS_HOST }}
                   username: ${{ secrets.VPS_USER }}
                   key: ${{ secrets.VPS_KEY }}
                   passphrase: ${{ secrets.VPS_KEY_PASSPHRASE }}
-                  source: "."
-                  target: "/home/${{ secrets.VPS_USER }}/discord-bot"
+                  source: "discord-bot"
+                  target: "/home/${{ secrets.VPS_USER }}/discord-bot/"
 
-            - name: Upload .env
+            - name: Create .env file
               run: |
                   echo "${{ secrets.ENV_FILE }}" > .env
               shell: bash
 
             - name: Upload .env to VPS
-              uses: appleboy/scp-action@v0.1.3
+              uses: appleboy/scp-action@v0.1.7
               with:
                   host: ${{ secrets.VPS_HOST }}
                   username: ${{ secrets.VPS_USER }}
                   key: ${{ secrets.VPS_KEY }}
                   passphrase: ${{ secrets.VPS_KEY_PASSPHRASE }}
                   source: ".env"
-                  target: "/home/${{ secrets.VPS_USER }}/discord-bot"
+                  target: "/home/${{ secrets.VPS_USER }}/discord-bot/"
 
-            - name: SSH Remote Commands
-              uses: appleboy/ssh-action@v1.0.0
+            - name: Setup systemd service and deploy
+              uses: appleboy/ssh-action@v1.0.3
               with:
                   host: ${{ secrets.VPS_HOST }}
                   username: ${{ secrets.VPS_USER }}
@@ -58,9 +115,51 @@ jobs:
                   passphrase: ${{ secrets.VPS_KEY_PASSPHRASE }}
                   script: |
                       cd ~/discord-bot
-                      export NVM_DIR="$HOME/.nvm"
-                      source "$NVM_DIR/nvm.sh"
-                      npm install
-                      npm run register
-                      pm2 restart bot || pm2 start npm --name bot -- run start
-                      pm2 save
+                      chmod +x discord-bot
+
+                      # Create systemd service file (only if it doesn't exist)
+                      if [ ! -f /etc/systemd/system/discord-bot.service ]; then
+                          sudo tee /etc/systemd/system/discord-bot.service > /dev/null <<EOF
+                      [Unit]
+                      Description=Discord Bot
+                      After=network.target
+                      StartLimitIntervalSec=0
+
+                      [Service]
+                      Type=simple
+                      Restart=always
+                      RestartSec=1
+                      User=$USER
+                      WorkingDirectory=/home/$USER/discord-bot
+                      ExecStart=/home/$USER/discord-bot/discord-bot
+                      Environment=PATH=/usr/local/bin:/usr/bin:/bin
+
+                      [Install]
+                      WantedBy=multi-user.target
+                      EOF
+                          
+                          echo "Created systemd service file"
+                          sudo systemctl daemon-reload
+                          sudo systemctl enable discord-bot
+                      fi
+
+                      # Stop service before replacing binary
+                      sudo systemctl stop discord-bot || true
+
+                      # Give it a moment to stop
+                      sleep 2
+
+                      # Start the service
+                      sudo systemctl start discord-bot
+
+                      # Check status
+                      sleep 3
+                      if sudo systemctl is-active --quiet discord-bot; then
+                          echo "✅ Discord bot deployed and started successfully!"
+                          sudo systemctl status discord-bot --no-pager -l
+                      else
+                          echo "❌ Failed to start discord bot"
+                          sudo systemctl status discord-bot --no-pager -l
+                          sudo journalctl -u discord-bot --no-pager -l -n 20
+                          exit 1
+                      fi
