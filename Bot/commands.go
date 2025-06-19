@@ -1,4 +1,4 @@
-﻿package bot
+package bot
 
 import (
 	db "discord-bot/Db"
